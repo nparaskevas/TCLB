@@ -102,10 +102,22 @@ CudaDeviceFunction vector_t getNormal(){
 }
 
 // 	HELPER FUNCTIONS:
+
+CudaDeviceFunction real_t mapPsi(real_t myPhase){
+	// Function for mapping PhaseF to PsiF, eq 8 from "Accurate conservative 
+	// phase-field method for simulation of two-phase flows"
+	// NOTE: I think that W is global, no?
+	real_t myPhase_tilde =fmin(fmax(myPhase, 0.0), 1.0);
+	real_t psi;
+	psi = W * log((myPhase_tilde + 1e-16) / (1 - myPhase_tilde + 1e-16));
+	return psi
+}
+
 CudaDeviceFunction vector_t calcGradPhi(){
 	vector_t gradPhi;
 	// eq 34 from "Improved locality of the phase-field lattice Boltzmann 
 	//	model for immiscible fluids at high density ratios"
+	// TODO: Maybe rename to simply calcGrad?
 	#ifdef OPTIONS_Outflow
 		if ((NodeType & NODE_BOUNDARY) == NODE_Neumann_E || (NodeType & NODE_BOUNDARY) == NODE_Convective_E) {
 			gradPhi.x = 0.0;
@@ -122,6 +134,36 @@ CudaDeviceFunction vector_t calcGradPhi(){
 		} else { 
 			gradPhi.x = (PhaseF(1,0) - PhaseF(-1,0))/3.0 + (PhaseF(1,1) - PhaseF(-1,-1) + PhaseF(1,-1) - PhaseF(-1,1))/12.0;
 			gradPhi.y = (PhaseF(0,1) - PhaseF(0,-1))/3.0 + (PhaseF(1,1) - PhaseF(-1,-1) + PhaseF(-1,1) - PhaseF(1,-1))/12.0;
+		}
+	// For mapping the phase indicator to a linearised function, psi
+	#idef OPTIONS_mapPhase
+		int psiField[9];
+		// Store these values for later use
+		psiField[0] = PhaseF(0,0);
+		psiField[1] = PhaseF(1,0)
+		psiField[2] = PhaseF(0,1)
+		psiField[3] = PhaseF(-1,0)
+		psiField[4] = PhaseF(0,-1)
+		psiField[5] = PhaseF(1,1)
+		psiField[6] = PhaseF(-1,1)
+		psiField[7] = PhaseF(-1,-1)
+		psiField[8] = PhaseF(1,-1)
+
+		if ((NodeType & NODE_BOUNDARY) == NODE_Neumann_E || (NodeType & NODE_BOUNDARY) == NODE_Convective_E) {
+			gradPhi.x = 0.0;
+			gradPhi.y = (psiField[2] - psiField[4])/3.0 + (psiField[6] - psiField[7] )/6.0;
+		} else if ((NodeType & NODE_BOUNDARY) == NODE_Convective_N) {
+			gradPhi.x = (psiField[1] - psiField[3])/3.0 + (psiField[8] - psiField[7] )/6.0;
+			gradPhi.y = 0.0;
+		} else if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
+			gradPhi.x = (psiField[1] - psiField[3])/3.0 + (psiField[5] - psiField[7] + psiField[8] - psiField[6])/12.0;
+			gradPhi.y = (psiField[2] - psiField[4])/3.0 + (psiField[5] - psiField[7] + psiField[6] - psiField[8])/12.0;
+		} else if (NodeType & NODE_BOUNDARY){
+			gradPhi.x = 0.0;
+			gradPhi.y = 0.0;
+		} else { 
+			gradPhi.x = (psiField[1] - psiField[3])/3.0 + (psiField[5] - psiField[7] + psiField[8] - psiField[6])/12.0;
+			gradPhi.y = (psiField[2] - psiField[4])/3.0 + (psiField[5] - psiField[7] + psiField[6] - psiField[8])/12.0;
 		}
 	#else
 		if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
@@ -474,8 +516,7 @@ CudaDeviceFunction void log_data_from_special_nodes ()
 {	
 	switch (NodeType & NODE_ADDITIONALS) {
 		real_t location;
-		case NODE_SpikeTrack:
-			if (PhaseF < 0.5 && PhaseF(0,1) > 0.5 ) {
+		case NODE_SpikeTrack:e-
 				location =4.0*Period - (Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) ));
 				AddToRTISpike(location);
 			}
