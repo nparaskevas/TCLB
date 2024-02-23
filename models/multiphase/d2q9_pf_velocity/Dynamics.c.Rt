@@ -38,6 +38,15 @@
 // Code updates:
 //		16/08/2018: Cascaded collision scheme
 
+// Phase field mapping:
+// Code Updates:
+//		23/02/2023
+// 		- Changed the gradient, laplacian and numerator for the forcing term.
+// 		These have IFDEF statements, that should not require separate functions 
+// 		outside of a mapping function.
+
+
+
 #include <math.h>
 #define PI 3.1415926535897
 
@@ -106,7 +115,7 @@ CudaDeviceFunction vector_t getNormal(){
 CudaDeviceFunction real_t mapPsi(real_t myPhase){
 	// Function for mapping PhaseF to PsiF, eq 8 from "Accurate conservative 
 	// phase-field method for simulation of two-phase flows"
-	// NOTE: I think that W is global, no?
+	// NOTE: I think that W is global,
 	real_t myPhase_tilde =fmin(fmax(myPhase, 0.0), 1.0);
 	real_t psi;
 	psi = W * log((myPhase_tilde + 1e-16) / (1 - myPhase_tilde + 1e-16));
@@ -139,15 +148,15 @@ CudaDeviceFunction vector_t calcGradPhi(){
 	#idef OPTIONS_mapPhase
 		int psiField[9];
 		// Store these values for later use
-		psiField[0] = PhaseF(0,0);
-		psiField[1] = PhaseF(1,0)
-		psiField[2] = PhaseF(0,1)
-		psiField[3] = PhaseF(-1,0)
-		psiField[4] = PhaseF(0,-1)
-		psiField[5] = PhaseF(1,1)
-		psiField[6] = PhaseF(-1,1)
-		psiField[7] = PhaseF(-1,-1)
-		psiField[8] = PhaseF(1,-1)
+		psiField[0] = mapPsi(PhaseF(0,0));
+		psiField[1] = mapPsi(PhaseF(1,0));
+		psiField[2] = mapPsi(PhaseF(0,1));
+		psiField[3] = mapPsi(PhaseF(-1,0));
+		psiField[4] = mapPsi(PhaseF(0,-1));
+		psiField[5] = mapPsi(PhaseF(1,1));
+		psiField[6] = mapPsi(PhaseF(-1,1));
+		psiField[7] = mapPsi(PhaseF(-1,-1));
+		psiField[8] = mapPsi(PhaseF(1,-1));
 
 		if ((NodeType & NODE_BOUNDARY) == NODE_Neumann_E || (NodeType & NODE_BOUNDARY) == NODE_Convective_E) {
 			gradPhi.x = 0.0;
@@ -185,13 +194,31 @@ CudaDeviceFunction real_t get_lpPhi(real_t myPhase){
 	// input myPhase - PhaseF at given node (usually 0,0 or the one from BC)
 
 	// lpPhi - eq 35 from "Improved locality of the phase-field lattice Boltzmann 
-	// model for immiscible fluids at high density ratios"
-	real_t lpPhi = PhaseF(1,1)+PhaseF(-1,1)+PhaseF(1,-1)+PhaseF(-1,-1)
-	               + 4.0*(PhaseF(1,0)+PhaseF(-1,0)+PhaseF(0,1)+PhaseF(0,-1))
-	               - 20.0*myPhase;
-	lpPhi /= 6.0;
+	// model for immiscible fluids at high density ratios", Laplacian
 
-	return lpPhi;
+	#ifdef OPTIONS_mapPsi
+		real_t psiField[9];
+		psiField[0] = mapPsi(PhaseF(0,0));
+		psiField[1] = mapPsi(PhaseF(1,0));
+		psiField[2] = mapPsi(PhaseF(0,1));
+		psiField[3] = mapPsi(PhaseF(-1,0));
+		psiField[4] = mapPsi(PhaseF(0,-1));
+		psiField[5] = mapPsi(PhaseF(1,1));
+		psiField[6] = mapPsi(PhaseF(-1,1));
+		psiField[7] = mapPsi(PhaseF(-1,-1));
+		psiField[8] = mapPsi(PhaseF(1,-1));
+		real_t lpPhi = psiField[5]+psiField[6]+psiField[8]+psiField[7]
+					+ 4.0*(psiField[1]+psiField[3]+psiField[2]+psiField[2])
+					- 20.0*myPhase;
+		lpPhi /= 6.0;
+	#else
+		real_t lpPhi = PhaseF(1,1)+PhaseF(-1,1)+PhaseF(1,-1)+PhaseF(-1,-1)
+					+ 4.0*(PhaseF(1,0)+PhaseF(-1,0)+PhaseF(0,1)+PhaseF(0,-1))
+					- 20.0*myPhase;
+		lpPhi /= 6.0;
+	#endif
+ 	return lpPhi;
+
 }
 
 CudaDeviceFunction real_t calcMu(real_t myPhase){
@@ -249,6 +276,7 @@ CudaDeviceFunction real_t calcF_phi(int i, real_t numerator, real_t nx, real_t n
 
 	// nx: normalized PhaseField gradient in x direction
 	// this method calculates F_phi in [0-9] lattice coord
+	
 
 	real_t f_phi;
 	f_phi = wf[i] * numerator * (d2q9_ex[i]*nx + d2q9_ey[i]*ny);
@@ -394,9 +422,9 @@ CudaDeviceFunction void Init_distributions(){
 
 	// Find Gradients and normals:
 	real_t myPhaseF = PhaseF(0,0);
-
-	vector_t gradPhi = calcGradPhi();
 	real_t nx, ny;
+	vector_t gradPhi = calcGradPhi();
+
 	// gradPhi.z stores the magnitude of the vector
 	nx = gradPhi.x/gradPhi.z;
 	ny = gradPhi.y/gradPhi.z;
@@ -408,13 +436,18 @@ CudaDeviceFunction void Init_distributions(){
 
 	real_t Gamma[9], F_phi[9];
 	real_t pfavg = 0.5*(PhaseField_l+PhaseField_h);
-	real_t tmp1 = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
 
+	#ifdef OPTIONS_mapPsi
+		real_t psi = mapPsi(myPhaseF);
+		real_t tmp1 = (1.0 - pow(tanh(psi / (2 * 1e-16)), 2)) / W;
+	#else
+		real_t tmp1 = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
+	#endif
 	for (int i=0; i< 9; i++){
 		Gamma[i] = calcGamma(i, U, V, mag);
 		F_phi[i] = calcF_phi(i, tmp1, nx, ny);
-		h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq
-		g[i] = Gamma[i] - wf[i]; 				     //geq
+		h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq, eq 9
+		g[i] = Gamma[i] - wf[i]; 				     //geq, eq 17
 	}
 
 	#ifdef OPTIONS_RT
