@@ -97,6 +97,7 @@ AddAction("Init"     , c("PhaseInit","WallInit", "WallIter","BaseInit"))
 # 	Outputs:
 AddQuantity(name="Rho",	  unit="kg/m3")
 AddQuantity(name="PhaseField",unit="1")
+AddQuantity(name="Psi",unit="1")
 AddQuantity(name="U",	  unit="m/s",vector=T)
 AddQuantity(name="NormalizedPressure",	  unit="Pa")
 AddQuantity(name="Pressure",	  unit="Pa")

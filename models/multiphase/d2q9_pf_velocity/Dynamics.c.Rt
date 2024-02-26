@@ -38,15 +38,6 @@
 // Code updates:
 //		16/08/2018: Cascaded collision scheme
 
-// Phase field mapping:
-// Code Updates:
-//		23/02/2023
-// 		- Changed the gradient, laplacian and numerator for the forcing term.
-// 		These have IFDEF statements, that should not require separate functions 
-// 		outside of a mapping function.
-
-
-
 #include <math.h>
 #define PI 3.1415926535897
 
@@ -78,6 +69,11 @@ CudaDeviceFunction real_t getPhaseField(){
 	return PhaseF(0,0);
 }
 
+
+CudaDeviceFunction real_t getPsiField(){
+	return calcPsiF(PhaseF(0,0));
+}
+
 CudaDeviceFunction vector_t getU(){
 	vector_t u;
 	u.x = U;
@@ -98,7 +94,7 @@ CudaDeviceFunction real_t getPressure(){
 	//	model for immiscible fluids at high density ratios"
 	real_t p =  <?R C(sum(g)) ?> ;//Normalised pressure
 	real_t rho = getRho();
-	p = p*rho/3.0; 
+	p = p*rho/3.0; get
 	return p;
 }
 
@@ -111,23 +107,46 @@ CudaDeviceFunction vector_t getNormal(){
 }
 
 // 	HELPER FUNCTIONS:
+CudaDeviceFunction real_t calcPsiF(real_t myPsi){
+	// Conversion of phasefield to signed distance function, eq 8 from "Accurate conservative phase-field 
+	// method for simulation of two-phase flows"
 
-CudaDeviceFunction real_t mapPsi(real_t myPhase){
-	// Function for mapping PhaseF to PsiF, eq 8 from "Accurate conservative 
-	// phase-field method for simulation of two-phase flows"
-	// NOTE: I think that W is global,
-	real_t myPhase_tilde =fmin(fmax(myPhase, 0.0), 1.0);
-	real_t psi;
-	psi = W * log((myPhase_tilde + 1e-16) / (1 - myPhase_tilde + 1e-16));
-	return psi
+	// required to avoid divide by zero errors
+	real_t epsilon = 1e-10;
+
+	real_t PsiF = log((myPsi + epsilon) / (1 - myPsi + epsilon));
+	return PsiF;
 }
 
 CudaDeviceFunction vector_t calcGradPhi(){
 	vector_t gradPhi;
 	// eq 34 from "Improved locality of the phase-field lattice Boltzmann 
 	//	model for immiscible fluids at high density ratios"
-	// TODO: Maybe rename to simply calcGrad?
-	#ifdef OPTIONS_Outflow
+
+	#ifdef OPTIONS_phaseMap
+		// If phase indicator is being mapped, then save the mapped phase indicators to the nodes
+		real_t psiF[9];
+		psiF[0] = calcPsiF(PhaseF(0,0));
+		psiF[1] = calcPsiF(PhaseF(1,0));
+		psiF[2] = calcPsiF(PhaseF(0,1));
+		psiF[3] = calcPsiF(PhaseF(-1,0));
+		psiF[4] = calcPsiF(PhaseF(0,-1));
+		psiF[5] = calcPsiF(PhaseF(1,1));
+		psiF[6] = calcPsiF(PhaseF(-1,1));
+		psiF[7] = calcPsiF(PhaseF(-1,-1));
+		psiF[8] = calcPsiF(PhaseF(1,-1));
+
+		if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
+			gradPhi.x = (psiF[1] - psiF[3])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[8])/12.0;
+			gradPhi.y = (psiF[2] - psiF[4])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[8])/12.0;
+		} else if (NodeType & NODE_BOUNDARY){
+			gradPhi.x = 0.0;
+			gradPhi.y = 0.0;
+		} else { 
+			gradPhi.x = (psiF[1] - psiF[3])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[8])/12.0;
+			gradPhi.y = (psiF[2] - psiF[4])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[8])/12.0;
+		}
+	#elif OPTIONS_Outflow
 		if ((NodeType & NODE_BOUNDARY) == NODE_Neumann_E || (NodeType & NODE_BOUNDARY) == NODE_Convective_E) {
 			gradPhi.x = 0.0;
 			gradPhi.y = (PhaseF(0,1) - PhaseF(0,-1))/3.0 + (PhaseF(-1,1) - PhaseF(-1,-1) )/6.0;
@@ -143,36 +162,6 @@ CudaDeviceFunction vector_t calcGradPhi(){
 		} else { 
 			gradPhi.x = (PhaseF(1,0) - PhaseF(-1,0))/3.0 + (PhaseF(1,1) - PhaseF(-1,-1) + PhaseF(1,-1) - PhaseF(-1,1))/12.0;
 			gradPhi.y = (PhaseF(0,1) - PhaseF(0,-1))/3.0 + (PhaseF(1,1) - PhaseF(-1,-1) + PhaseF(-1,1) - PhaseF(1,-1))/12.0;
-		}
-	// For mapping the phase indicator to a linearised function, psi
-	#idef OPTIONS_mapPhase
-		int psiField[9];
-		// Store these values for later use
-		psiField[0] = mapPsi(PhaseF(0,0));
-		psiField[1] = mapPsi(PhaseF(1,0));
-		psiField[2] = mapPsi(PhaseF(0,1));
-		psiField[3] = mapPsi(PhaseF(-1,0));
-		psiField[4] = mapPsi(PhaseF(0,-1));
-		psiField[5] = mapPsi(PhaseF(1,1));
-		psiField[6] = mapPsi(PhaseF(-1,1));
-		psiField[7] = mapPsi(PhaseF(-1,-1));
-		psiField[8] = mapPsi(PhaseF(1,-1));
-
-		if ((NodeType & NODE_BOUNDARY) == NODE_Neumann_E || (NodeType & NODE_BOUNDARY) == NODE_Convective_E) {
-			gradPhi.x = 0.0;
-			gradPhi.y = (psiField[2] - psiField[4])/3.0 + (psiField[6] - psiField[7] )/6.0;
-		} else if ((NodeType & NODE_BOUNDARY) == NODE_Convective_N) {
-			gradPhi.x = (psiField[1] - psiField[3])/3.0 + (psiField[8] - psiField[7] )/6.0;
-			gradPhi.y = 0.0;
-		} else if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
-			gradPhi.x = (psiField[1] - psiField[3])/3.0 + (psiField[5] - psiField[7] + psiField[8] - psiField[6])/12.0;
-			gradPhi.y = (psiField[2] - psiField[4])/3.0 + (psiField[5] - psiField[7] + psiField[6] - psiField[8])/12.0;
-		} else if (NodeType & NODE_BOUNDARY){
-			gradPhi.x = 0.0;
-			gradPhi.y = 0.0;
-		} else { 
-			gradPhi.x = (psiField[1] - psiField[3])/3.0 + (psiField[5] - psiField[7] + psiField[8] - psiField[6])/12.0;
-			gradPhi.y = (psiField[2] - psiField[4])/3.0 + (psiField[5] - psiField[7] + psiField[6] - psiField[8])/12.0;
 		}
 	#else
 		if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
@@ -194,21 +183,21 @@ CudaDeviceFunction real_t get_lpPhi(real_t myPhase){
 	// input myPhase - PhaseF at given node (usually 0,0 or the one from BC)
 
 	// lpPhi - eq 35 from "Improved locality of the phase-field lattice Boltzmann 
-	// model for immiscible fluids at high density ratios", Laplacian
+	// model for immiscible fluids at high density ratios"
 
-	#ifdef OPTIONS_mapPsi
-		real_t psiField[9];
-		psiField[0] = mapPsi(PhaseF(0,0));
-		psiField[1] = mapPsi(PhaseF(1,0));
-		psiField[2] = mapPsi(PhaseF(0,1));
-		psiField[3] = mapPsi(PhaseF(-1,0));
-		psiField[4] = mapPsi(PhaseF(0,-1));
-		psiField[5] = mapPsi(PhaseF(1,1));
-		psiField[6] = mapPsi(PhaseF(-1,1));
-		psiField[7] = mapPsi(PhaseF(-1,-1));
-		psiField[8] = mapPsi(PhaseF(1,-1));
-		real_t lpPhi = psiField[5]+psiField[6]+psiField[8]+psiField[7]
-					+ 4.0*(psiField[1]+psiField[3]+psiField[2]+psiField[2])
+	#ifdef OPTIONS_phaseMap
+		real_t psiF[9];
+		psiF[0] = calcPsiF(PhaseF(0,0));
+		psiF[1] = calcPsiF(PhaseF(1,0));
+		psiF[2] = calcPsiF(PhaseF(0,1));
+		psiF[3] = calcPsiF(PhaseF(-1,0));
+		psiF[4] = calcPsiF(PhaseF(0,-1));
+		psiF[5] = calcPsiF(PhaseF(1,1));
+		psiF[6] = calcPsiF(PhaseF(-1,1));
+		psiF[7] = calcPsiF(PhaseF(-1,-1));
+		psiF[8] = calcPsiF(PhaseF(1,-1));
+		real_t lpPhi = psiF[5]+psiF[6]+psiF[8]+psiF[4]
+					+ 4.0*(psiF[1]+psiF[3]+psiF[2]+psiF[4])
 					- 20.0*myPhase;
 		lpPhi /= 6.0;
 	#else
@@ -217,8 +206,7 @@ CudaDeviceFunction real_t get_lpPhi(real_t myPhase){
 					- 20.0*myPhase;
 		lpPhi /= 6.0;
 	#endif
- 	return lpPhi;
-
+	return lpPhi;
 }
 
 CudaDeviceFunction real_t calcMu(real_t myPhase){
@@ -276,7 +264,6 @@ CudaDeviceFunction real_t calcF_phi(int i, real_t numerator, real_t nx, real_t n
 
 	// nx: normalized PhaseField gradient in x direction
 	// this method calculates F_phi in [0-9] lattice coord
-	
 
 	real_t f_phi;
 	f_phi = wf[i] * numerator * (d2q9_ex[i]*nx + d2q9_ey[i]*ny);
@@ -335,7 +322,6 @@ CudaDeviceFunction real_t calcTau(real_t myPhaseF, real_t myRho)
 		//					  +(PhaseField_h-myPhaseF)*Density_h*Viscosity_h    ) ;
 		// tau = 3.0 * DynVisc / myRho + 0.5;
 	}
-
 	return tau;
 }
 
@@ -420,11 +406,12 @@ CudaDeviceFunction void Init_wallNorm(){
 
 CudaDeviceFunction void Init_distributions(){
 
+
 	// Find Gradients and normals:
 	real_t myPhaseF = PhaseF(0,0);
-	real_t nx, ny;
-	vector_t gradPhi = calcGradPhi();
 
+	vector_t gradPhi = calcGradPhi();
+	real_t nx, ny;
 	// gradPhi.z stores the magnitude of the vector
 	nx = gradPhi.x/gradPhi.z;
 	ny = gradPhi.y/gradPhi.z;
@@ -437,19 +424,20 @@ CudaDeviceFunction void Init_distributions(){
 	real_t Gamma[9], F_phi[9];
 	real_t pfavg = 0.5*(PhaseField_l+PhaseField_h);
 
-	#ifdef OPTIONS_mapPsi
-		real_t psi = mapPsi(myPhaseF);
-		real_t tmp1 = (1.0 - pow(tanh(psi / (2 * 1e-16)), 2)) / W;
+	// Forcing term numerator
+	#ifdef OPTIONS_phaseMap
+		real_t myPsiF = calcPsiF(myPhaseF);
+		real_t psiTerm = tanh(myPsiF / (2 * W));
+		real_t tmp1 = (1 - pow(psiTerm, 2));
 	#else
 		real_t tmp1 = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
 	#endif
 	for (int i=0; i< 9; i++){
 		Gamma[i] = calcGamma(i, U, V, mag);
 		F_phi[i] = calcF_phi(i, tmp1, nx, ny);
-		h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq, eq 9
-		g[i] = Gamma[i] - wf[i]; 				     //geq, eq 17
+		h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq
+		g[i] = Gamma[i] - wf[i]; 				     //geq
 	}
-
 	#ifdef OPTIONS_RT
 		PhaseOld = myPhaseF;
 	#endif
@@ -509,7 +497,6 @@ CudaDeviceFunction void calcHydroIter() {
 		tmpPhase = PhaseF;
 		real_t myPhaseF = PhaseF;
 		real_t rho = calcRho(myPhaseF);
-		log_data_from_special_nodes();
 		#ifdef OPTIONS_debug	
 			AddToMomentumX(U*rho);
 			AddToMomentumY(V*rho);
@@ -517,7 +504,7 @@ CudaDeviceFunction void calcHydroIter() {
 
 		BC_Switcher();		
 
-                if (PhaseF <= 0.5) {
+        if (PhaseF <= 0.5) {
 //			AddToBubbleVelocityX( (1 - PhaseF)*U );
 //			AddToBubbleVelocityY( (1 - PhaseF)*V );
 			AddToBubbleLocationY( (1 - PhaseF)*Y );
@@ -530,7 +517,7 @@ CudaDeviceFunction void calcHydroIter() {
 		#else
 			if (NodeType & NODE_MRT) { CollisionMRT();}
 		#endif
-                if (tmpPhase <= 0.5) {
+            if (tmpPhase <= 0.5) {
 			AddToBubbleVelocityX( (1 - tmpPhase)*U );
 			AddToBubbleVelocityY( (1 - tmpPhase)*V );
 		}
@@ -542,27 +529,6 @@ CudaDeviceFunction void calcHydroIter() {
 			AddToMomentumX_afterCol(U*rho);
 			AddToMomentumY_afterCol(V*rho);
 		#endif
-	}
-}
-
-CudaDeviceFunction void log_data_from_special_nodes ()
-{	
-	switch (NodeType & NODE_ADDITIONALS) {
-		real_t location;
-		case NODE_SpikeTrack:e-
-				location =4.0*Period - (Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) ));
-				AddToRTISpike(location);
-			}
-		case NODE_BubbleTrack:
-			if (PhaseF < 0.5 && PhaseF(0,1) > 0.5) {
-				location = Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) );
-				AddToRTIBubble(location);
-			}
-		case NODE_WaveTrack:
-			if (PhaseF > 0.5 && PhaseF(0,1) < 0.5) {
-				location = Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) );
-				AddToWaveLocation(location);
-			}
 	}
 }
 
@@ -1042,7 +1008,6 @@ CudaDeviceFunction void calcWallPhaseIter(){
 CudaDeviceFunction void relaxMRT(real_t R[9], real_t tau)
 {
 	real_t S[9]; // Populations for MRT relaxation
-		
 	// the cofficients (before R[i]) follows from the GramSchmidt transformation matrix:
 	// eq 10.30 from The Lattice Boltzmann Method: Principles and Practice
 	// T. Krüger, H. Kusumaatmaja, A. Kuzmin, O. Shardt, G. Silva, E.M. Viggen
