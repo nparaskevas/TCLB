@@ -94,7 +94,7 @@ CudaDeviceFunction real_t getPressure(){
 	//	model for immiscible fluids at high density ratios"
 	real_t p =  <?R C(sum(g)) ?> ;//Normalised pressure
 	real_t rho = getRho();
-	p = p*rho/3.0; get
+	p = p*rho/3.0;
 	return p;
 }
 
@@ -114,7 +114,7 @@ CudaDeviceFunction real_t calcPsiF(real_t myPsi){
 	// required to avoid divide by zero errors
 	real_t epsilon = 1e-10;
 
-	real_t PsiF = log((myPsi + epsilon) / (1 - myPsi + epsilon));
+	real_t PsiF = W*log((myPsi + epsilon) / (1 - myPsi + epsilon));
 	return PsiF;
 }
 
@@ -497,6 +497,7 @@ CudaDeviceFunction void calcHydroIter() {
 		tmpPhase = PhaseF;
 		real_t myPhaseF = PhaseF;
 		real_t rho = calcRho(myPhaseF);
+		log_data_from_special_nodes();
 		#ifdef OPTIONS_debug	
 			AddToMomentumX(U*rho);
 			AddToMomentumY(V*rho);
@@ -504,7 +505,7 @@ CudaDeviceFunction void calcHydroIter() {
 
 		BC_Switcher();		
 
-        if (PhaseF <= 0.5) {
+                if (PhaseF <= 0.5) {
 //			AddToBubbleVelocityX( (1 - PhaseF)*U );
 //			AddToBubbleVelocityY( (1 - PhaseF)*V );
 			AddToBubbleLocationY( (1 - PhaseF)*Y );
@@ -517,7 +518,7 @@ CudaDeviceFunction void calcHydroIter() {
 		#else
 			if (NodeType & NODE_MRT) { CollisionMRT();}
 		#endif
-            if (tmpPhase <= 0.5) {
+                if (tmpPhase <= 0.5) {
 			AddToBubbleVelocityX( (1 - tmpPhase)*U );
 			AddToBubbleVelocityY( (1 - tmpPhase)*V );
 		}
@@ -529,6 +530,28 @@ CudaDeviceFunction void calcHydroIter() {
 			AddToMomentumX_afterCol(U*rho);
 			AddToMomentumY_afterCol(V*rho);
 		#endif
+	}
+}
+
+CudaDeviceFunction void log_data_from_special_nodes ()
+{	
+	switch (NodeType & NODE_ADDITIONALS) {
+		real_t location;
+		case NODE_SpikeTrack:
+			if (PhaseF < 0.5 && PhaseF(0,1) > 0.5 ) {
+				location =4.0*Period - (Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) ));
+				AddToRTISpike(location);
+			}
+		case NODE_BubbleTrack:
+			if (PhaseF < 0.5 && PhaseF(0,1) > 0.5) {
+				location = Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) );
+				AddToRTIBubble(location);
+			}
+		case NODE_WaveTrack:
+			if (PhaseF > 0.5 && PhaseF(0,1) < 0.5) {
+				location = Y + (PhaseF-0.5)/(PhaseF-PhaseF(0,1) );
+				AddToWaveLocation(location);
+			}
 	}
 }
 
