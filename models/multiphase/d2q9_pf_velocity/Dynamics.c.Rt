@@ -1203,7 +1203,7 @@ CudaDeviceFunction void CollisionMRT(){
 				Req[i] = 3.0 * wf[i] * (d2q9_ex[i] * (myPhaseF*U - PhaseOld*uold)
 					+ d2q9_ey[i] * (myPhaseF*V - PhaseOld*vold));
 				F_psi[i] = calcF_phi(i, tmp1, nxp, nyp) + Req[i];
-				heq[i] = myPhaseF * wf[i] * (1 + 3.0 * (d2q9_ex[i]*U + d2q9_ey[i]*V) ) - 0.5*F_phi[i];
+				heq[i] = myPhaseF * wf[i] * (1 + 3.0 * (d2q9_ex[i]*U + d2q9_ey[i]*V) ) - 0.5*F_psi[i];
 			#else
 				F_psi[i] = calcF_phi(i, tmp1, nxp, nyp); // Forcing Terms:
 				//calcF_phi: F_psi[i] = wf[i] * tmp1 * (d2q9_ex[i]*nxp + d2q9_ey[i]*nyp);
