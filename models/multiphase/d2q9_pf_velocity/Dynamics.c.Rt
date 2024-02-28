@@ -107,14 +107,17 @@ CudaDeviceFunction vector_t getNormal(){
 }
 
 // 	HELPER FUNCTIONS:
-CudaDeviceFunction real_t calcPsiF(real_t myPsi){
+CudaDeviceFunction real_t calcPsiF(real_t myPhaseF){
 	// Conversion of phasefield to signed distance function, eq 8 from "Accurate conservative phase-field 
 	// method for simulation of two-phase flows"
 
-	// required to avoid divide by zero errors
+	// Required to avoid divide by zero errors
 	real_t epsilon = 1e-10;
 
-	real_t PsiF = W*log((myPsi + epsilon) / (1 - myPsi + epsilon));
+	// Enforce boundedness of the PF
+	realt_t myPhaseFTilde = min(max(myPhaseF,0),1)
+
+	real_t PsiF = W*log((myPhaseFTilde + epsilon) / (1 - myPhaseFTilde + epsilon));
 	return PsiF;
 }
 
