@@ -6,37 +6,18 @@
 	source("lib/lattice.R")
 ?>
 
-// 04/02/2017 - Model Developed: A. Fakhari, T. Mitchell
-//	      - Implementation:	 T. Mitchell
-
-// Model for Physical Review E article:
-//
 // """" Improved locality of the phase-field lattice Boltzmann 
 //	model for immiscible fluids at high density ratios 	    """"
-//
 // Authors: A. Fakhari, T. Mitchell, C. Leonardi, D. Bolster (2017) """"
 // DOI: 10.1103/PhysRevE.96.053301
 
+// """" A cascaded phase-field lattice Boltzmann model for the 
+//  simulation of incompressible, immiscible fluids with high density contrast """"
+// Authors: G Gruszczynski, T Mitchell, C Leonardi, T Barber
+// DOI: 10.1016/j.camwa.2019.08.018
 
 // Maintainer: Travis-Mitchell @TravisMitchell
-// Code updates:
-//		04/02/2017: Development starts...
-//		- Verification/Validation:
-//			Poiseuille flow
-//			Rayleigh Taylor
-//			Taylor bubble rise
-//		24/07/2017: Options added for Reviewer comments:
-//			  : didn't notice any macroscopic difference in soln's
-//			- A: Higher order Guo forcing term
-//			- B: Time dependent term in phase field from Ren et al (2016)
-//		14/08/2017: Added in boundary conditions:
-// 			- Moving walls seem to work well for bubble deformation
-//			- Pressure/velocity not fully tested - use at your own PERIL!
-
-
-// Maintainer & Implementation: Grzegorz Gruszczynski @ggruszczynski
-// Code updates:
-//		16/08/2018: Cascaded collision scheme
+// Maintainer (cascaded): Grzegorz Gruszczynski @ggruszczynski
 
 #include <math.h>
 #define PI 3.1415926535897
@@ -67,11 +48,6 @@ CudaDeviceFunction real_t getRho(){
 
 CudaDeviceFunction real_t getPhaseField(){
 	return PhaseF(0,0);
-}
-
-
-CudaDeviceFunction real_t getPsiField(){
-	return calcPsiF(PhaseF(0,0));
 }
 
 CudaDeviceFunction vector_t getU(){
@@ -107,25 +83,11 @@ CudaDeviceFunction vector_t getNormal(){
 }
 
 // 	HELPER FUNCTIONS:
-CudaDeviceFunction real_t calcPsiF(real_t myPhaseF){
-	// Conversion of phasefield to signed distance function, eq 8 from "Accurate conservative phase-field 
-	// method for simulation of two-phase flows"
-
-	// Required to avoid divide by zero errors
-	real_t epsilon = 1e-16;
-
-	// Enforce boundedness of the PF
-	real_t myPhaseFTilde = min(max(myPhaseF,0.0),1.0);
-
-	real_t PsiF = W*log((myPhaseFTilde + epsilon) / (1.0 - myPhaseFTilde + epsilon));
-	return PsiF;
-}
-
 CudaDeviceFunction vector_t calcGradPhi(){
-	vector_t gradPhi;
 	// eq 34 from "Improved locality of the phase-field lattice Boltzmann 
 	//	model for immiscible fluids at high density ratios"
 
+	vector_t gradPhi;
 	#ifdef OPTIONS_Outflow
 		if ((NodeType & NODE_BOUNDARY) == NODE_Neumann_E || (NodeType & NODE_BOUNDARY) == NODE_Convective_E) {
 			gradPhi.x = 0.0;
@@ -159,36 +121,49 @@ CudaDeviceFunction vector_t calcGradPhi(){
 		return gradPhi;
 }
 
+#ifdef OPTIONS_phaseMap
+CudaDeviceFunction real_t getPsiField(){
+	return map_phi_to_psi(PhaseF(0,0));
+}
+
 CudaDeviceFunction vector_t calcGradPsi(){
-	vector_t gradPsi;
 	// eq 34 from "Improved locality of the phase-field lattice Boltzmann 
 	//	model for immiscible fluids at high density ratios"
 
-		// If phase indicator is being mapped, then save the mapped phase indicators to the nodes
-		real_t psiF[9];
-		psiF[0] = calcPsiF(PhaseF(0,0));
-		psiF[1] = calcPsiF(PhaseF(1,0));
-		psiF[2] = calcPsiF(PhaseF(0,1));
-		psiF[3] = calcPsiF(PhaseF(-1,0));
-		psiF[4] = calcPsiF(PhaseF(0,-1));
-		psiF[5] = calcPsiF(PhaseF(1,1));
-		psiF[6] = calcPsiF(PhaseF(-1,1));
-		psiF[7] = calcPsiF(PhaseF(-1,-1));
-		psiF[8] = calcPsiF(PhaseF(1,-1));
+	vector_t gradPsi;
+	real_t psiF[9];
+	psiF[0] = map_phi_to_psi(PhaseF(0,0));
+	psiF[1] = map_phi_to_psi(PhaseF(1,0));
+	psiF[2] = map_phi_to_psi(PhaseF(0,1));
+	psiF[3] = map_phi_to_psi(PhaseF(-1,0));
+	psiF[4] = map_phi_to_psi(PhaseF(0,-1));
+	psiF[5] = map_phi_to_psi(PhaseF(1,1));
+	psiF[6] = map_phi_to_psi(PhaseF(-1,1));
+	psiF[7] = map_phi_to_psi(PhaseF(-1,-1));
+	psiF[8] = map_phi_to_psi(PhaseF(1,-1));
 
-		if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
-			gradPsi.x = (psiF[1] - psiF[3])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[6])/12.0;
-			gradPsi.y = (psiF[2] - psiF[4])/3.0 + (psiF[5] - psiF[7] + psiF[6] - psiF[8])/12.0;
-		} else if (NodeType & NODE_BOUNDARY){
-			gradPsi.x = 0.0;
-			gradPsi.y = 0.0;
-		} else { 
-			gradPsi.x = (psiF[1] - psiF[3])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[6])/12.0;
-			gradPsi.y = (psiF[2] - psiF[4])/3.0 + (psiF[5] - psiF[7] + psiF[6] - psiF[8])/12.0;
-		}
-		gradPsi.z = sqrt(gradPsi.x*gradPsi.x + gradPsi.y*gradPsi.y + 1e-12); // length
-		return gradPsi;
+	if ((NodeType & NODE_BOUNDARY) == NODE_Wall){
+		gradPsi.x = (psiF[1] - psiF[3])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[6])/12.0;
+		gradPsi.y = (psiF[2] - psiF[4])/3.0 + (psiF[5] - psiF[7] + psiF[6] - psiF[8])/12.0;
+	} else if (NodeType & NODE_BOUNDARY){
+		gradPsi.x = 0.0;
+		gradPsi.y = 0.0;
+	} else { 
+		gradPsi.x = (psiF[1] - psiF[3])/3.0 + (psiF[5] - psiF[7] + psiF[8] - psiF[6])/12.0;
+		gradPsi.y = (psiF[2] - psiF[4])/3.0 + (psiF[5] - psiF[7] + psiF[6] - psiF[8])/12.0;
+	}
+	gradPsi.z = sqrt(gradPsi.x*gradPsi.x + gradPsi.y*gradPsi.y + 1e-12); // length
+	return gradPsi;
 }
+
+CudaDeviceFunction real_t map_phi_to_psi(real_t myPhaseF){
+	// eq. 8 from: Accurate conservative phase-field method for simulation of two-phase flows
+	real_t epsilon = 1e-100;
+	real_t bounded_phi = min(max(myPhaseF,0.0),1.0);
+
+	return W*log((bounded_phi + epsilon) / (1.0 - bounded_phi + epsilon));
+}
+#endif
 
 CudaDeviceFunction real_t get_lpPhi(real_t myPhase){
 	// input myPhase - PhaseF at given node (usually 0,0 or the one from BC)
@@ -403,49 +378,35 @@ CudaDeviceFunction void Init_distributions(){
 	real_t myPhaseF = PhaseF(0,0);
 
 	// We need this regardless of whether we are using phase mapping
-	vector_t gradPhi = calcGradPhi();
+	#ifdef OPTIONS_phaseMap
+		vector_t gradient = calcGradPsi();
+	#else
+		vector_t gradient = calcGradPhi();
+	#endif
 	real_t nx, ny;
-
-	// gradPhi.z stores the magnitude of the vector
-	nx = gradPhi.x/gradPhi.z;
-	ny = gradPhi.y/gradPhi.z;
+	nx = gradient.x/gradient.z;
+	ny = gradient.y/gradient.z;
 
 	// Define Equilibrium, then initialise all da things
 	U = VelocityX;
 	V = VelocityY;
 	real_t mag = U*U + V*V;
 
-	real_t Gamma[9], F_phi[9];
 	real_t pfavg = 0.5*(PhaseField_l+PhaseField_h);
-
-	// Forcing term numerator
 	#ifdef OPTIONS_phaseMap
-		// We still need gradPhi, so keep that and also produce gradPsi
-		vector_t gradPsi = calcGradPsi();
-		real_t nxp, nyp; 
-		nxp = gradPsi.x/gradPsi.z;
-		nyp = gradPsi.y/gradPsi.z;
-
-		real_t myPsiF = calcPsiF(myPhaseF);
+		real_t myPsiF = map_phi_to_psi(myPhaseF);
 		real_t psiTerm = tanh(myPsiF / (2 * W));
-		real_t tmp1 = (1 - pow(psiTerm, 2))/W;
-
-		// Use the mapped normal!
-		for (int i=0; i< 9; i++){
-			Gamma[i] = calcGamma(i, U, V, mag);
-			F_phi[i] = calcF_phi(i, tmp1, nxp, nyp);
-			h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq
-			g[i] = Gamma[i] - wf[i]; 				     // geq
-		}
+		real_t force_coefficient = (1 - pow(psiTerm, 2))/W;
 	#else
-		real_t tmp1 = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
-		for (int i=0; i< 9; i++){
-			Gamma[i] = calcGamma(i, U, V, mag);
-			F_phi[i] = calcF_phi(i, tmp1, nx, ny);
-			h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq
-			g[i] = Gamma[i] - wf[i]; 				     // geq
-		} 
+		real_t force_coefficient = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
 	#endif
+	real_t Gamma[9], F_phi[9];
+	for (int i=0; i< 9; i++){
+		Gamma[i] = calcGamma(i, U, V, mag);
+		F_phi[i] = calcF_phi(i, force_coefficient, nx, ny);
+		h[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];   // heq
+		g[i] = Gamma[i] - wf[i]; 				     // geq
+	} 
 
 	#ifdef OPTIONS_RT
 		PhaseOld = myPhaseF;
@@ -1170,7 +1131,11 @@ CudaDeviceFunction void CollisionMRT(){
 	real_t pfavg = 0.5*(PhaseField_l+PhaseField_h);
 
 	//  Gradients & Normals
-	vector_t gradPhi = calcGradPhi(); // Phase field gradient
+	#ifdef OPTIONS_phaseMap
+		vector_t gradPhi = calcGradPsi(); // Psi field gradient
+	#else
+		vector_t gradPhi = calcGradPhi(); // Phase field gradient
+	#endif
 	real_t p = getNormalizedPressure(); // normalized pressure
 	vector_t Fhydro = calcTotalHydrodynamicForceMRT(gradPhi, myPhaseF, rho, tau,  calcMu(myPhaseF), p);
 
@@ -1187,58 +1152,28 @@ CudaDeviceFunction void CollisionMRT(){
 	}
 
 	#ifdef OPTIONS_phaseMap
-		// We still need gradPhi, so keep that and also produce gradPsi
-		real_t F_psi[9];
-		vector_t gradPsi = calcGradPsi();
-		real_t nxp, nyp; 
-		nxp = gradPsi.x/gradPsi.z;
-		nyp = gradPsi.y/gradPsi.z;
-
-		real_t myPsiF = calcPsiF(myPhaseF);
+		real_t myPsiF = map_phi_to_psi(myPhaseF);
 		real_t psiTerm = tanh(myPsiF / (2 * W));
-		real_t tmp1 = (1 - pow(psiTerm, 2))/W;
-
-		for (int i=0; i< 9; i++){
-			#ifdef OPTIONS_RT
-				Req[i] = 3.0 * wf[i] * (d2q9_ex[i] * (myPhaseF*U - PhaseOld*uold)
-					+ d2q9_ey[i] * (myPhaseF*V - PhaseOld*vold));
-				F_psi[i] = calcF_phi(i, tmp1, nxp, nyp) + Req[i];
-				heq[i] = myPhaseF * wf[i] * (1 + 3.0 * (d2q9_ex[i]*U + d2q9_ey[i]*V) ) - 0.5*F_psi[i];
-			#else
-				F_psi[i] = calcF_phi(i, tmp1, nxp, nyp); // Forcing Terms:
-				//calcF_phi: F_psi[i] = wf[i] * tmp1 * (d2q9_ex[i]*nxp + d2q9_ey[i]*nyp);
-				heq[i] = myPhaseF * Gamma[i] - 0.5*F_psi[i];  // heq
-			#endif
-			#ifdef OPTIONS_debug
-				AddToF_phiX(F_phi[i]*d2q9_ex[i]);
-				AddToF_phiY(F_phi[i]*d2q9_ey[i]);
-			#endif
-				h[i] = h[i] - omega_phi * (h[i]-heq[i]) + F_psi[i];	// collision
-			}
+		real_t force_coefficient = (1 - pow(psiTerm, 2))/W;
 	#else
-		real_t nx = gradPhi.x/gradPhi.z;  // GradPhi normalized in x, y direction
-		real_t ny = gradPhi.y/gradPhi.z;
-
-		real_t tmp1 = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
-		for (int i=0; i< 9; i++){
-			#ifdef OPTIONS_RT
-				Req[i] = 3.0 * wf[i] * (d2q9_ex[i] * (myPhaseF*U - PhaseOld*uold)
-					+ d2q9_ey[i] * (myPhaseF*V - PhaseOld*vold));
-				F_phi[i] = calcF_phi(i, tmp1, nx, ny) + Req[i];
-				heq[i] = myPhaseF * wf[i] * (1 + 3.0 * (d2q9_ex[i]*U + d2q9_ey[i]*V) ) - 0.5*F_phi[i];
-			#else
-				F_phi[i] = calcF_phi(i, tmp1, nx, ny); // Forcing Terms:
-				//calcF_phi: F_phi[i] = wf[i] * tmp1 * (d2q9_ex[i]*nx + d2q9_ey[i]*ny);
-				heq[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];  // heq
-			#endif
-			#ifdef OPTIONS_debug
-				AddToF_phiX(F_phi[i]*d2q9_ex[i]);
-				AddToF_phiY(F_phi[i]*d2q9_ey[i]);
-			#endif
-				h[i] = h[i] - omega_phi * (h[i]-heq[i]) + F_phi[i];	// collision
-			}
+		real_t force_coefficient = (1.0 - 4.0*(myPhaseF - pfavg)*(myPhaseF - pfavg))/W;
 	#endif
-
+	for (int i=0; i< 9; i++){
+		#ifdef OPTIONS_RT
+			Req[i] = 3.0*wf[i]*( d2q9_ex[i]*(myPhaseF*U - PhaseOld*uold)
+				                +d2q9_ey[i]*(myPhaseF*V - PhaseOld*vold));
+			F_phi[i] = calcF_phi(i, force_coefficient, nx, ny) + Req[i];
+			heq[i] = myPhaseF * wf[i] * (1 + 3.0 * (d2q9_ex[i]*U + d2q9_ey[i]*V) ) - 0.5*F_phi[i];
+		#else
+			F_phi[i] = calcF_phi(i, force_coefficient, nx, ny);
+			heq[i] = myPhaseF * Gamma[i] - 0.5*F_phi[i];  // heq
+		#endif
+		#ifdef OPTIONS_debug
+			AddToF_phiX(F_phi[i]*d2q9_ex[i]);
+			AddToF_phiY(F_phi[i]*d2q9_ey[i]);
+		#endif
+			h[i] = h[i] - omega_phi * (h[i]-heq[i]) + F_phi[i];	// collision
+		}
 	//  PRESSURE EVOLUTION UPDATE:
 	// ---------------------- MRT ---------------------------
 	#ifdef OPTIONS_GF
