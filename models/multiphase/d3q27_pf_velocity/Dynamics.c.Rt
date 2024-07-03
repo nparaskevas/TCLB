@@ -104,6 +104,8 @@ CudaDeviceFunction vector_t getNormal(){
 # Miscellaneous helper functions used in the code #
 ###################################################
 ?>
+
+
 /*
 	This function uses isotropic gradient stencils to return
 	the gradient of the phase field variable \phi.
@@ -158,6 +160,32 @@ CudaDeviceFunction vector_t calcGradPhi()
 	#endif
 	return gradPhi;
 }
+
+/* 
+	Function for calculating the normalised grad phi vector.
+*/
+CudaDeviceFunction real_t calcNormGradPhi() {
+
+	vector_t gradPhi = calcGradPhi();
+	real_t magnPhi, nx, ny, nz, gradPhiVal_x, gradPhiVal_y, gradPhiVal_z;
+	real_t nPhi_x, nPhi_y, nPhi_z;
+
+	magnPhi = sqrt(gradPhi.x*gradPhi.x + gradPhi.y*gradPhi.y + gradPhi.z*gradPhi.z);
+	gradPhiVal_x = gradPhi.x;
+	gradPhiVal_y = gradPhi.y;
+	gradPhiVal_z = gradPhi.z;
+
+	if (magnPhi < minGradient){
+		nx=0.0; ny=0.0; nz=0.0;
+	} else {
+		nPhi_x = gradPhi.x/magnPhi;
+		nPhi_y = gradPhi.y/magnPhi;
+		nPhi_z = gradPhi.z/magnPhi;
+	}
+	vector_t nPhi = {nPhi_x, nPhi_y, nPhi_z};
+	return nPhi;
+}
+
 
 /*
 	This function is run as the second stage of each action and fills
@@ -567,6 +595,7 @@ CudaDeviceFunction void calc_Fb(real_t *fx, real_t *fy, real_t *fz, real_t rho){
 	*fz = (Density_h-rho)*BuoyancyZ + rho*GravitationZ;
 }
 
+// Calculate the surface tension force
 CudaDeviceFunction void calc_Fs(real_t *fx, real_t *fy, real_t *fz, real_t mu, vector_t gPhi){
 	#ifdef OPTIONS_thermo
 		Temp = Temp(0,0,0);
@@ -595,6 +624,46 @@ CudaDeviceFunction void calc_Fs(real_t *fx, real_t *fy, real_t *fz, real_t mu, v
 			*fy = mu * gPhi.y + delta_s*gradSig.y*( magnPhi2*gradT.y - dotTMP*gPhi.y );
 			*fz = mu * gPhi.z + delta_s*gradSig.z*( magnPhi2*gradT.z - dotTMP*gPhi.z );			
 		}
+	#endif
+	#ifdef OPTIONS_SurfStress
+		/* 
+			Implements the surface-stress forcing term implemented by Brackbill et al., 1992.
+		*/
+
+		// Define some prerequisites
+
+		real_t coeff, nGradPhi_x, nGradPhi_y, nGradPhi_z, divNormPhi;
+		vector_t gradPhi, nGradPhi, divNormPhi_x, divNormPhi_y, divNormPhi_z;
+
+		gradPhi = calcGradPhi();
+		magnPhi = sqrt(gradPhi.x*gradPhi.x + gradPhi.y*gradPhi.y + gradPhi.z*gradPhi.z);
+		magnPhi2 = magnPhi * magnPhi;
+
+		// Calculate the normalised grad phi term and explicitly define the components
+
+		nGradPhi = calcNormGradPhi();
+		nGradPhi_x = nGradPhi.x;
+		nGradPhi_y = nGradPhi.y;
+		nGradPhi_z = nGradPhi.z;
+		coeff = 3/2 * (sigma * IntWidth);
+
+		// This needs to be replaced, but as a first pass, should be ok. Calculate the divergence term from the gradphi terms.
+
+		<?R
+			IsotropicGrad('divNormPhi_x','nGradPhi_x')
+		?>
+		<?R
+			IsotropicGrad('divNormPhi_y','nGradPhi_y')
+		?>
+		<?R
+			IsotropicGrad('divNormPhi_z','nGradPhi_z')
+		?>
+
+		// Now we can calculate the divergence and then the forcing term
+		divNormPhi = divNormPhi_x.x + divNormPhi_y.y + divNormPhi_z.z;
+		*fx = - coeff * divNormPhi * magnPhi2 * (gradPhi.x / magnPhi);
+		*fy = - coeff * divNormPhi * magnPhi2 * (gradPhi.y / magnPhi);
+		*fz = - coeff * divNormPhi * magnPhi2 * (gradPhi.z / magnPhi);
 	#else
 		*fx = mu * gPhi.x;
 		*fy = mu * gPhi.y;
