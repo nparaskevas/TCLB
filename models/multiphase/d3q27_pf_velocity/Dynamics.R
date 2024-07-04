@@ -1,3 +1,8 @@
+#	TODO: Change the normalised gradphi term from simply being gradPhiVal_x etc. to nGradPhiVal_x etc.,
+#	It is misleading in its current form, and can cause compatibility issues with the geometric boundary 
+#	condition. This needs to be done in both the Dynamics.c.Rt and the Dynamics.R file.
+#
+
 # Setting permissive access policy.
 #  * This skips checks of fields being overwritten or read prematurely.
 #  * Otherwise the model compilation was failing.
@@ -117,6 +122,8 @@ if (Options$geometric){
 	AddField("gradPhiVal_x", stencil3d=1, group="gradPhi", optimise_for_static_access = FALSE)
 	AddField("gradPhiVal_y", stencil3d=1, group="gradPhi", optimise_for_static_access = FALSE)
 	AddField("gradPhiVal_z", stencil3d=1, group="gradPhi", optimise_for_static_access = FALSE)
+	AddField("PhaseF",stencil3d=1, group="PF")
+
 } else {
     AddField("PhaseF",stencil3d=1, group="PF")
 }
