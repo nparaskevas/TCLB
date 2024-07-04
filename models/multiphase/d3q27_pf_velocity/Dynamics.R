@@ -41,11 +41,6 @@ extra_save_iteration = c()
 extra_load_iteration = c()
 extra_load_phase = c()
 
-if (Options$isograd) {
-
-}
-
-
 if (Options$staircaseimp) {
     # actual normal directions
     AddDensity(name="nw_actual_x", dx=0, dy=0, dz=0, group="nw_actual")
@@ -163,7 +158,7 @@ if (Options$thermo){
 		AddStage("WallInit" , "Init_wallNorm", load=DensityAll$group %in% c("nw"), save=Fields$group %in% c("nw", "solid_boundary", extra_fields_to_load_for_bc))
 		AddStage("calcWall" , "calcWallPhase", save=Fields$name=="PhaseF", load=DensityAll$group %in% c("nw", "solid_boundary", extra_fields_to_load_for_bc))
 		AddStage("calcWallPhase_correction", "calcWallPhase_correction", save=Fields$name=="PhaseF", load=DensityAll$group %in% c("nw", "solid_boundary"))
-		AddStage("calcNormGradPhi", "calcNormGradPhi", save=Fields$group %in% c("gradPhi"))
+		AddStage("calcNormGradPhi", "calcNormGradPhi", load=DensityAll$group %in% c("PF"), save=Fields$group %in% c("gradPhi"))
 	} else {
 		AddStage("WallInit_Real"  , "Init_real_wallNorm", save=Fields$group %in% c("nw"))
 		AddStage("WallInit" , "Init_wallNorm", load=DensityAll$group %in% c("nw"), save=Fields$group %in% c("nw", "solid_boundary", extra_fields_to_load_for_bc))
@@ -197,7 +192,7 @@ if (Options$thermo){
 	    AddAction("InitFieldsWithNormals"     , c("InitFromFieldsStageWithNormals","WallInit_CA" , "calcPhaseGrad_init", "calcWall_CA", "calcWallPhase_correction", "BaseInit"))
     } else if (Options$SurfStress){
 		AddAction("Iteration", c("BaseIter", "calcPhase", "calcWall", "calcWallPhase_correction", "calcNormGradPhi"))
-		AddAction("Init"     , c("PhaseInit", "WallInit_Real", "WallInit" , "SurfaceTensioncalcWall","calcWallPhase_correction","calcNormGradPhi","BaseInit"))
+		AddAction("Init"     , c("PhaseInit", "WallInit_Real", "WallInit" ,"calcWallPhase_correction","BaseInit", "calcNormGradPhi"))
 		AddAction("InitFields", c("InitFromFieldsStage","WallInit_Real","WallInit" , "calcWall", "calcWallPhase_correction","calcNormGradPhi","BaseInit"))
 		AddAction("InitFieldsWithNormals", c("InitFromFieldsStageWithNormals", "WallInit" , "calcWall", "calcWallPhase_correction","calcNormGradPhi", "BaseInit"))
 	} else {

@@ -632,7 +632,7 @@ CudaDeviceFunction void calc_Fs(real_t *fx, real_t *fy, real_t *fz, real_t mu, v
 
 		// Define some prerequisites
 
-		real_t coeff, nGradPhi_x, nGradPhi_y, nGradPhi_z, divNormPhi;
+		real_t coeff, nGradPhi_x, nGradPhi_y, nGradPhi_z, divNormPhi, magnPhi, magnPhi2;
 		vector_t gradPhi, nGradPhi, divNormPhi_x, divNormPhi_y, divNormPhi_z;
 
 		gradPhi = calcGradPhi();
