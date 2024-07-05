@@ -219,6 +219,9 @@ if (Options$thermo){
 	if (Options$staircaseimp) {
 		AddQuantity(name="ActualNormal", unit=1, vector=T)
 	}
+	if (Options$SurfStress){
+		AddQuantity(name="nGradPhi", unit=1, vector=T)
+	}
 ###################################
 ########INPUTS - PHASEFIELD########
 ###################################

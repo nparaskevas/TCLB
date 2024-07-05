@@ -99,12 +99,21 @@ CudaDeviceFunction vector_t getNormal(){
 	return n;
 }
 
+#ifdef OPTIONS_SurfStress
+CudaDeviceFunction vector_t getnGradPhi() {
+	vector_t nGradPhi;
+	nGradPhi.x = nGradPhiVal_x(0,0,0);
+	nGradPhi.y = nGradPhiVal_y(0,0,0);
+	nGradPhi.z = nGradPhiVal_z(0,0,0);
+	return nGradPhi;
+}
+#endif
+
 <?R
 ###################################################
 # Miscellaneous helper functions used in the code #
 ###################################################
 ?>
-
 
 /*
 	This function uses isotropic gradient stencils to return
@@ -626,7 +635,7 @@ CudaDeviceFunction void calc_Fs(real_t *fx, real_t *fy, real_t *fz, real_t mu, v
 
 		// Define some prerequisites
 
-		real_t coeff, nGradPhi_x, nGradPhi_y, nGradPhi_z, divNormPhi, magnPhi, magnPhi2;
+		real_t coeff, nGradPhiVal_x, nGradPhiVal_y, nGradPhiVal_z, divNormPhi, magnPhi, magnPhi2;
 		vector_t gradPhi, nGradPhi, divNormPhi_x, divNormPhi_y, divNormPhi_z;
 
 		gradPhi = calcGradPhi();
