@@ -43,12 +43,6 @@
 //		xx/xx/2022: Development of geometric wetting B.C. option as well as existing surface energy.
 //		xx/xx/2023: Code extension for wetting on curved boundaries. 
 
-/*
-	TODO: Change the normalised gradphi term from simply being gradPhiVal_x etc. to nGradPhiVal_x etc.,
-	It is misleading in its current form, and can cause compatibility issues with the geometric boundary 
-	condition. This needs to be done in both the Dynamics.c.Rt and the Dynamics.R file.
-*/
-
 #include <math.h>
 #define PI 3.14159265
 #define cs2 0.33333333
@@ -173,16 +167,16 @@ CudaDeviceFunction vector_t calcGradPhi()
 CudaDeviceFunction real_t calcNormGradPhi() {
 
 	vector_t gradPhi = calcGradPhi();
-	real_t magnPhi, nx, ny, nz, gradPhiVal_x, gradPhiVal_y, gradPhiVal_z;
+	real_t magnPhi, nx, ny, nz, nGradPhiVal_x, nGradPhiVal_y, nGradPhiVal_z;
 
 	magnPhi = sqrt(gradPhi.x*gradPhi.x + gradPhi.y*gradPhi.y + gradPhi.z*gradPhi.z);
 
 	if (magnPhi < minGradient){
 		nx=0.0; ny=0.0; nz=0.0;
 	} else {
-		gradPhiVal_x = gradPhi.x / magnPhi;
-		gradPhiVal_y = gradPhi.y / magnPhi;
-		gradPhiVal_z = gradPhi.z / magnPhi;
+		nGradPhiVal_x = gradPhi.x / magnPhi;
+		nGradPhiVal_y = gradPhi.y / magnPhi;
+		nGradPhiVal_z = gradPhi.z / magnPhi;
 	}
 }
 
@@ -643,13 +637,13 @@ CudaDeviceFunction void calc_Fs(real_t *fx, real_t *fy, real_t *fz, real_t mu, v
 		// This needs to be replaced, but as a first pass, should be ok. Calculate the divergence term from the gradphi terms.
 
 		<?R
-			IsotropicGrad('divNormPhi_x','gradPhiVal_x')
+			IsotropicGrad('divNormPhi_x','nGradPhiVal_x')
 		?>
 		<?R
-			IsotropicGrad('divNormPhi_y','gradPhiVal_y')
+			IsotropicGrad('divNormPhi_y','nGradPhiVal_y')
 		?>
 		<?R
-			IsotropicGrad('divNormPhi_z','gradPhiVal_z')
+			IsotropicGrad('divNormPhi_z','nGradPhiVal_z')
 		?>
 
 		// Now we can calculate the divergence and then the forcing term
