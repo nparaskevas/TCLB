@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<CLBConfig version="2.0" output="output/">
+	<Geometry nx="640" ny="636" nz="352">
+		<MRT>
+			<Box />
+		</MRT>
+	<!--	<Wall mask="ALL" name="gdl">
+			<Text file="/scratch/pawsey1178/nparaskevas/geos/gdls/gdl260_195_1272.dat" dx="-250" nx="195" ny="1272" nz="1272" />
+		</Wall>
+		<None name="water">
+			<Box dx="-50" />
+		</None>
+        <None name="buffer">
+            <Box nx="30"/>
+        </None>
+		<WPressure name="outlet">
+			<Box nx="2" />
+		</WPressure>
+		<EVelocity name="inlet">
+			<Box dx="-2" />
+		</EVelocity>-->
+		<Smoothing>
+			<Box />
+		</Smoothing>
+	</Geometry>
+	<Model>
+		<Param name="Density_h" value="1" />
+		<Param name="Density_l" value="1" />
+		<Param name="PhaseField" value="0" />
+		<!--<Param name="PhaseField" value="0" zone="outlet" />
+        <Param name="PhaseField" value="1" zone="inlet"/>
+        <Param name="PhaseField" value="1" zone="water"/>
+		<Param name="VelocityX" value="-5e-5" zone="inlet" />
+        <Param name="Pressure" value="0" zone="outlet" />-->
+		<Param name="IntWidth" value="5" />
+		<Param name="M" value="0.05" />
+		<Param name="sigma" value="0.05" />
+		<!--<Param name="radAngle" value="115d" zone="gdl" />-->
+		<Param name="Viscosity_h" value="0.1" />    
+		<Param name="Viscosity_l" value="0.001818" />
+        <!--<Param name="Viscosity_l" value="0.05" zone="buffer"/> -->   
+	</Model>
+	<Solve Iterations = "10"/>
+    <Geometry> <!--  now disable the smoothing    -->
+    <None mask="ADDITIONALS">
+        <Box/>
+    </None>
+    </Geometry>
+	<VTK/>
+	<Solve 	Iterations="720000">
+		<VTK 	Iterations="30000" what="U,PhaseField,COLLISION"/>
+	</Solve>
+</CLBConfig>
+

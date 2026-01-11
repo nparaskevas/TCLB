@@ -281,7 +281,7 @@ if (BorderMargin$max[3] > BorderMargin$min[3]) for (z in BorderMargin$min[3]:Bor
 }
 };
 
-template <class E> CudaGlobalFunction void Kernel() {
+template <class E> CudaGlobalFunction void __launch_bounds__(128) Kernel() {
   E e;
   e.Execute();
 }
