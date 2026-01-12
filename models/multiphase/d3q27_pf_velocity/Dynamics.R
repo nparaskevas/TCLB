@@ -271,7 +271,7 @@ if (Options$thermo){
 	AddNodeType(name="Bubbletrack", group="ADDITIONALS")
 	AddGlobal("InterfacePosition", op="MAX", comment='trackPosition')
     #AddGlobal("InterfaceYTop", op="MAX", comment="Track top position of the interface in Y direction")
-	AddGlobal("InterfaceXNegTop", op="MAX", comment="Track the top position of the interface in -X direction")
+	AddGlobal("InterfaceXTop", op="MAX", comment="Track the top position of the interface in X direction")
     AddGlobal("Vfront",comment='velocity infront of bubble')
 	AddGlobal("Vback",comment='velocity behind bubble')
 	AddGlobal("RTISpike", op="MAX", comment='SpikeTracker ')

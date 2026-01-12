@@ -825,9 +825,9 @@ CudaDeviceFunction void updateTrackers(real_t C){
 	real_t location;
     // track breakthrough towards -X for my flooding sims
 	if ((NodeType & NODE_BGK) || (NodeType & NODE_MRT)) {
-		if ( C < 0.5 && PhaseF(1, 0, 0) > 0.5) {
-			location = X + (C-0.5)/(C-PhaseF(1,0,0));
-			AddToInterfaceXNegTop(location);
+		if ( C < 0.5 && PhaseF(-1, 0, 0) > 0.5) {
+			location = X - (C-0.5)/(C-PhaseF(-1,0,0));
+			AddToInterfaceXTop(location);
 		}
 	}
 
