@@ -48,18 +48,18 @@ namespace
     if(VTKGrid == NULL)
       {
       VTKGrid = vtkImageData::New();
-      extent[0] = solver.lattice->region.dx;
-      extent[1] = solver.lattice->region.dx + solver.lattice->region.nx;
-      extent[2] = solver.lattice->region.dy;
-      extent[3] = solver.lattice->region.dy + solver.lattice->region.ny;
-      extent[4] = solver.lattice->region.dz;
-      extent[5] = solver.lattice->region.dz + solver.lattice->region.nz;
-      wholeExtent[0] = solver.lattice->mpi.totalregion.dx;
-      wholeExtent[1] = solver.lattice->mpi.totalregion.dx + solver.lattice->mpi.totalregion.nx;
-      wholeExtent[2] = solver.lattice->mpi.totalregion.dy;
-      wholeExtent[3] = solver.lattice->mpi.totalregion.dy + solver.lattice->mpi.totalregion.ny;
-      wholeExtent[4] = solver.lattice->mpi.totalregion.dz;
-      wholeExtent[5] = solver.lattice->mpi.totalregion.dz + solver.lattice->mpi.totalregion.nz;
+      extent[0] = solver.getCartLattice()->getLocalRegion().dx;
+      extent[1] = solver.getCartLattice()->getLocalRegion().dx + solver.getCartLattice()->getLocalRegion().nx;
+      extent[2] = solver.getCartLattice()->getLocalRegion().dy;
+      extent[3] = solver.getCartLattice()->getLocalRegion().dy + solver.getCartLattice()->getLocalRegion().ny;
+      extent[4] = solver.getCartLattice()->getLocalRegion().dz;
+      extent[5] = solver.getCartLattice()->getLocalRegion().dz + solver.getCartLattice()->getLocalRegion().nz;
+      wholeExtent[0] = solver.getCartLattice()->getGlobalRegion().dx;
+      wholeExtent[1] = solver.getCartLattice()->getGlobalRegion().dx + solver.getCartLattice()->getGlobalRegion().nx;
+      wholeExtent[2] = solver.getCartLattice()->getGlobalRegion().dy;
+      wholeExtent[3] = solver.getCartLattice()->getGlobalRegion().dy + solver.getCartLattice()->getGlobalRegion().ny;
+      wholeExtent[4] = solver.getCartLattice()->getGlobalRegion().dz;
+      wholeExtent[5] = solver.getCartLattice()->getGlobalRegion().dz + solver.getCartLattice()->getGlobalRegion().nz;
       if (! exportCellData) {
         if (extent[1] == wholeExtent[1]) extent[1]--;
         wholeExtent[1]--;
@@ -190,13 +190,14 @@ namespace
     }      
     unsigned int * myArrayData = myArray->WritePointer(0,size);
     flag_t * NodeType = new flag_t[size];
-    solver.lattice->GetFlags(reg, NodeType);
+    auto _flags = solver.getCartLattice()->getFlags(reg);
+    for (size_t _i = 0; _i < _flags.size(); _i++) NodeType[_i] = (flag_t)_flags[_i];
     
     for (size_t i=0;i<size;i++) {
       myArrayData[i] = (unsigned int) NodeType[i];
     }
 
-    lbRegion old = solver.lattice->region;      
+    lbRegion old = solver.getCartLattice()->getLocalRegion();      
     if (! exportCellData) {
       fixPointData(old, reg, myArrayData, sizeof(real_t));
     }      
@@ -219,7 +220,7 @@ namespace
           myArrayData[i] = (unsigned char) (NodeType[i] & NODE_<?%s n$group ?>) >> <?%d n$shift ?>; 
       }
       
-      lbRegion old = solver.lattice->region;      
+      lbRegion old = solver.getCartLattice()->getLocalRegion();
       if (! exportCellData) {
         fixPointData(old, reg, myArrayData, sizeof(real_t));
       }      
@@ -240,9 +241,8 @@ namespace
       vtkIdType numTuples = myArray->GetNumberOfComponents();
       real_t * myArrayData = myArray->WritePointer(0,size * numTuples);
       double myUnit = solver.units.alt("<?%s q$unit ?>");
-      lbRegion old = solver.lattice->region;      
-      solver.lattice->Get<?%s q$name ?>(old, (<?%s q$type ?>*)(myArrayData), 1/myUnit);
-      
+      lbRegion old = solver.getCartLattice()->getLocalRegion();
+      { auto _data = solver.getCartLattice()->getQuantity(solver.lattice->model->quantities.by_name("<?%s q$name ?>"), old, 1/myUnit); std::copy(_data.begin(), _data.end(), (real_t*)myArrayData); }
       if (! exportCellData) {
         fixPointData(old, reg, myArrayData, sizeof(<?%s q$type ?>));
       }      
@@ -313,7 +313,7 @@ namespace CatalystAdaptor
       dataDescription->ForceOutputOn();
       debug2("Last iteration in Catalyst\n");
       }
-    if(Processor->RequestDataDescription(dataDescription.GetPointer()) != 0)
+    if(Processor && Processor->RequestDataDescription(dataDescription.GetPointer()) != 0)
       {
       debug2("Data requested by Catalyst\n");
       BuildVTKDataStructures(solver);

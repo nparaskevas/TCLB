@@ -47,11 +47,11 @@ int cbCatalyst::Init () {
                         char short_nm[STRING_LEN];
                         sprintf(short_nm, "SCRIPT%d", script_number);
 //            		solver->outGlobalFile(short_nm, ".py", fn);
-                        sprintf(fn, "%s_%s.py", solver->info.outpath, short_nm);
+                        sprintf(fn, "%s_%s.py", solver->outpath.c_str(), short_nm);
                         if (D_MPI_RANK == 0) {
                                 notice("Preprocessing script %s --> %s\n", nm.c_str(), fn);
                                 std::string prefix = "";
-                                for (char * buf = solver->info.outpath; *buf; buf++) {
+                                for (const char * buf = solver->outpath.c_str(); *buf; buf++) {
                                         if ((*buf) == '/') prefix += '\\';
                                         if ((*buf) == '\\' || (*buf) == '&' || (*buf) == ';' || (*buf) == ' ') {
                                                 ERROR("illegal character in output prefix: %c!\n",*buf);
@@ -89,7 +89,7 @@ int cbCatalyst::Init () {
 
 int cbCatalyst::DoIt () {
 		Callback::DoIt();
-		solver->print("running Catalyst");
+		notice("running Catalyst");
 		CatalystAdaptor::CoProcess(*solver, solver->iter, solver->iter, 0);
 		return 0;
 	};
