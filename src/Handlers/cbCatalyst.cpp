@@ -88,12 +88,14 @@ int cbCatalyst::Init () {
 
 
 int cbCatalyst::DoIt () {
-		Callback::DoIt();
-		notice("running Catalyst");
-		CatalystAdaptor::CoProcess(*solver, solver->iter, solver->iter, 0);
-		return 0;
-	};
-
+    Callback::DoIt();
+    notice("running Catalyst");
+    if (D_MPI_RANK == 0) {
+        CatalystAdaptor::CoProcess(*solver, solver->iter, solver->iter, 0);
+    }
+    MPI_Barrier(MPMD.local);
+    return 0;
+};
 
 int cbCatalyst::Finish () {
 	        CatalystAdaptor::Finalize();
